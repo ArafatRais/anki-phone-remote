@@ -7,6 +7,7 @@ No third-party packages needed.
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import time
@@ -15,7 +16,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-ANKI_CONNECT = "http://127.0.0.1:8765"
+ANKI_CONNECT = os.environ.get("ANKI_CONNECT_URL", "http://127.0.0.1:8765")
 ALLOWED = {"guiCurrentCard", "guiShowAnswer", "guiAnswerCard", "guiUndo", "guiDeckReview", "deckNames"}
 RAW = "https://raw.githubusercontent.com/ArafatRais/anki-phone-remote/main/remote.html"
 HERE = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()

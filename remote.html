@@ -4,59 +4,53 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Anki Remote">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#111418">
 <title>Anki Remote</title>
 <style>
   :root { --bg:#111418; --fg:#eef1f5; --mut:#8b95a3; --card:#1b2027;
-          --again:#e5484d; --hard:#f08a24; --good:#30a46c; --easy:#3e63dd; --show:#3b4350; }
-  @media (prefers-color-scheme: light) {
-    :root { --bg:#f4f5f7; --fg:#15181d; --mut:#5d6672; --card:#fff; --show:#2b323c; }
-  }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { height:100%; margin:0; background:var(--bg); color:var(--fg);
-    font:16px/1.4 -apple-system,system-ui,sans-serif; overscroll-behavior:none; }
-  body { display:flex; flex-direction:column; padding:env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 12px); gap:12px; }
-  header { display:flex; justify-content:space-between; align-items:center; padding-top:10px; color:var(--mut); font-size:14px; }
+          --again:#e5484d; --hard:#f08a24; --good:#30a46c; --easy:#3e63dd; --show:#2f3742; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+  html, body { height:100%; margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.4 -apple-system, system-ui, sans-serif; overflow:hidden; overscroll-behavior:none; }
+  body { display:flex; flex-direction:column; height:100vh; height:100dvh; gap:12px;
+    padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px); }
+  header { flex:none; display:flex; justify-content:space-between; align-items:center; gap:8px; color:var(--mut); font-size:14px; }
   #status::before { content:""; display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--mut); margin-right:8px; }
   #status.ok::before { background:var(--good); } #status.err::before { background:var(--again); }
-  #card { flex:1; min-height:0; overflow:auto; background:var(--card); border-radius:16px; padding:16px; font-size:18px; white-space:pre-wrap; }
-  #card.hidden { display:none; }
-  #msg { flex:1; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--mut); padding:0 24px; }
-  #msg.hidden { display:none; }
-  .row { display:grid; gap:10px; }
-  #rate { grid-template-columns:repeat(4,1fr); }
-  button { border:0; border-radius:16px; color:#fff; font-weight:600; font-size:17px; font-family:inherit; padding:0; touch-action:manipulation; }
-  button:active { transform:scale(.97); filter:brightness(.9); }
-  #show { height:30vh; min-height:120px; max-height:260px; background:var(--show); font-size:24px; }
-  .rate { height:22vh; min-height:96px; max-height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
-  .rate small { font-weight:500; font-size:13px; opacity:.85; }
+  #deck { flex:1; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #undo { background:transparent; color:var(--mut); border:1px solid #3a424d; border-radius:10px; padding:6px 12px; font-size:14px; font-weight:500; }
+  main { flex:1; min-height:0; display:flex; }
+  button { border:0; border-radius:22px; color:#fff; font-weight:700; font-family:inherit; touch-action:manipulation; }
+  button:active { transform:scale(.98); filter:brightness(.88); }
+  #show { flex:1; background:var(--show); font-size:clamp(28px, 9vw, 44px); }
+  #rate { flex:1; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:12px; }
+  .rate { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; font-size:clamp(24px, 7.5vw, 36px); }
+  .rate small { font-weight:500; font-size:15px; opacity:.85; min-height:1.2em; }
   .again{background:var(--again)} .hard{background:var(--hard)} .good{background:var(--good)} .easy{background:var(--easy)}
+  #msg { flex:1; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--mut); padding:0 28px; font-size:18px; }
+  #diag { flex:none; color:var(--mut); font-size:11px; text-align:center; min-height:1.2em; opacity:.7; }
   .hidden { display:none !important; }
-  #tools { display:flex; justify-content:space-between; gap:10px; }
-  #tools button { background:transparent; color:var(--mut); font-size:14px; font-weight:500; padding:10px 6px; border-radius:10px; }
-  dialog { border:0; border-radius:16px; background:var(--card); color:var(--fg); padding:20px; }
+  dialog { border:0; border-radius:16px; background:var(--card); color:var(--fg); padding:20px; -webkit-user-select:auto; user-select:auto; }
   dialog input { font-size:20px; padding:10px; width:100%; margin:12px 0; border-radius:10px; border:1px solid var(--mut); background:transparent; color:inherit; }
-  dialog button { background:var(--easy); width:100%; padding:14px; }
+  dialog button { background:var(--easy); width:100%; padding:14px; font-size:17px; }
 </style>
 </head>
 <body>
-<header><span id="status">connecting…</span><span id="deck"></span></header>
-<div id="msg">Open Anki on your computer and start reviewing a deck.</div>
-<div id="card" class="hidden"></div>
-<div id="controls">
-  <div class="row"><button id="show">Show answer</button></div>
-  <div class="row hidden" id="rate">
+<header><span id="status">connecting…</span><span id="deck"></span><button id="undo">↶ Undo</button></header>
+<main>
+  <div id="msg">Open Anki on your computer and start reviewing a deck.</div>
+  <button id="show" class="hidden">Show answer</button>
+  <div id="rate" class="hidden">
     <button class="rate again" data-ease="1">Again<small></small></button>
     <button class="rate hard" data-ease="2">Hard<small></small></button>
     <button class="rate good" data-ease="3">Good<small></small></button>
     <button class="rate easy" data-ease="4">Easy<small></small></button>
   </div>
-</div>
-<div id="diag" style="color:var(--mut);font-size:12px;text-align:center;min-height:1.2em"></div>
-<div id="tools">
-  <button id="undo">↶ Undo</button>
-  <button id="toggle">Show card text: off</button>
-</div>
+</main>
+<div id="diag"></div>
 <dialog id="pinDlg"><form method="dialog">
   <b>Enter PIN</b><input id="pinIn" type="password" inputmode="numeric" autocomplete="off">
   <button>Unlock</button></form></dialog>
@@ -64,9 +58,15 @@
 <script>
 const $ = id => document.getElementById(id);
 const PIN_REQUIRED = __PIN_REQUIRED__;
+// A public tunnel (a hostname, not an IP) rate-limits busy clients, so ask far less often there.
+const TUNNEL = /[a-z]/i.test(location.hostname) && location.hostname !== "localhost";
+
 let pin = sessionStorage.getItem("pin") || "";
-let showText = localStorage.getItem("showText") === "1";
-let cardId = null, answerShown = false, busy = false;
+const hp = new URLSearchParams(location.hash.slice(1)).get("pin");
+if (hp) { pin = hp; sessionStorage.setItem("pin", pin); history.replaceState(null, "", location.pathname); }
+
+let cardId = null, answerShown = false, lastAnkiMs = "?";
+let lastRated = null, ratedAt = 0;      // the card just rated: ignore its stale copy for a moment
 
 async function call(action, params, signal) {
   const r = await fetch("/api", { method: "POST", signal,
@@ -81,39 +81,29 @@ async function call(action, params, signal) {
 
 function setStatus(ok, text) { const s = $("status"); s.className = ok ? "ok" : "err"; s.textContent = text; }
 
-function strip(html) {
-  const d = new DOMParser().parseFromString(html || "", "text/html");
-  d.querySelectorAll("style,script").forEach(n => n.remove());
-  return (d.body.innerText || d.body.textContent || "").trim();
+function setMode(mode) {            // "none" | "question" | "answer"
+  $("msg").classList.toggle("hidden", mode !== "none");
+  $("show").classList.toggle("hidden", mode !== "question");
+  $("rate").classList.toggle("hidden", mode !== "answer");
 }
 
 function render(card) {
   if (!card) {
-    cardId = null; answerShown = false;
-    $("msg").classList.remove("hidden"); $("card").classList.add("hidden");
-    $("show").classList.add("hidden"); $("rate").classList.add("hidden");
-    $("deck").textContent = "";
+    cardId = null; answerShown = false; setMode("none"); $("deck").textContent = "";
     return;
   }
-  if (card.cardId !== cardId) { cardId = card.cardId; answerShown = false; }
+  // Stale reply: Anki hasn't moved past the card we just rated yet.
+  if (card.cardId === lastRated && performance.now() - ratedAt < 3000) return;
+  if (cardId === null) cardId = card.cardId;            // first sight of the card: keep any optimistic "answer shown"
+  else if (card.cardId !== cardId) { cardId = card.cardId; answerShown = false; }
   $("deck").textContent = card.deckName || "";
-  $("msg").classList.add("hidden");
-  $("show").classList.toggle("hidden", answerShown);
-  $("rate").classList.toggle("hidden", !answerShown);
+  setMode(answerShown ? "answer" : "question");
   const times = card.nextReviews || [];
   document.querySelectorAll(".rate small").forEach((s, i) => s.textContent = times[i] || "");
-  const c = $("card");
-  c.classList.toggle("hidden", !showText);
-  if (showText) {
-    const q = strip(card.question), a = strip(card.answer);
-    c.textContent = answerShown && a.startsWith(q) ? a : (answerShown ? q + "\n\n— — —\n\n" + a : q);
-  }
 }
 
-// A public tunnel (a hostname, not an IP) rate-limits busy clients, so ask far less often there.
-const TUNNEL = /[a-z]/i.test(location.hostname) && location.hostname !== "localhost";
-let chain = Promise.resolve(), pending = 0, lastAnkiMs = "?";
 // Actions run strictly in order; the screen updates first, Anki catches up behind it.
+let chain = Promise.resolve(), pending = 0;
 function queue(label, fn) {
   const tap = performance.now();
   pending++; if (pollCtl) pollCtl.abort();
@@ -122,11 +112,13 @@ function queue(label, fn) {
     await fn();
     const end = performance.now();
     $("diag").textContent = `${label}: waited ${Math.round(start - tap)}ms, round trip ${Math.round(end - start)}ms, Anki ${lastAnkiMs}ms`;
-  }).catch(e => setStatus(false, e.message)).finally(() => { pending--; if (!pending && !TUNNEL) poll(); });
+  }).catch(e => setStatus(false, e.message)).finally(() => {
+    pending--;
+    if (!pending) setTimeout(poll, TUNNEL ? 700 : 0);   // one quick refresh to learn the new card
+  });
 }
 
-// One poll at a time, spaced by how slow the link is. Over a tunnel a fixed fast timer
-// piles up requests and starves the button presses, so back off and cancel polls for taps.
+// One poll at a time, spaced by how slow the link is; cancelled whenever you tap.
 let pollCtl = null, rtt = 100, polling = false;
 async function poll() {
   if (pending || polling) return;
@@ -152,32 +144,33 @@ function buzz() { if (navigator.vibrate) navigator.vibrate(8); }
 function tap(el, fn) { el.addEventListener("pointerdown", e => { e.preventDefault(); fn(e); }); }
 
 tap($("show"), () => {
-  answerShown = true; $("show").classList.add("hidden"); $("rate").classList.remove("hidden"); buzz();
+  answerShown = true; setMode("answer"); buzz();
   queue("show", () => call("guiShowAnswer"));
 });
 document.querySelectorAll(".rate").forEach(b => tap(b, () => {
   if (!answerShown) return;
+  lastRated = cardId; ratedAt = performance.now();
   answerShown = false; cardId = null; buzz();
-  $("rate").classList.add("hidden"); $("show").classList.remove("hidden");   // ready for next card now
+  document.querySelectorAll(".rate small").forEach(s => s.textContent = "");
+  setMode("question");                                   // ready for the next card straight away
   queue("rate", () => call("guiAnswerCard", { ease: +b.dataset.ease }));
 }));
-tap($("undo"), () => { answerShown = false; cardId = null; queue("undo", () => call("guiUndo")); });
-$("toggle").onclick = () => { showText = !showText; localStorage.setItem("showText", showText ? "1" : "0"); label(); poll(); };
-function label() { $("toggle").textContent = "Show card text: " + (showText ? "on" : "off"); }
+tap($("undo"), () => {
+  lastRated = null; answerShown = false; cardId = null; setMode("question");
+  queue("undo", () => call("guiUndo"));
+});
 
 function askPin() { const d = $("pinDlg"); if (!d.open) d.showModal(); }
 $("pinDlg").addEventListener("close", () => { pin = $("pinIn").value; sessionStorage.setItem("pin", pin); poll(); });
 
-// Volume / keyboard keys (when a Bluetooth keyboard is paired or on desktop testing)
+// Keyboard (desktop testing or a paired Bluetooth keyboard)
 addEventListener("keydown", e => {
   const fire = el => el.dispatchEvent(new Event("pointerdown", { cancelable: true }));
   if (e.key === " " || e.key === "Enter") { e.preventDefault(); fire(answerShown ? document.querySelector(".good") : $("show")); }
   else if ("1234".includes(e.key) && answerShown) fire(document.querySelector(`[data-ease="${e.key}"]`));
 });
 
-label();
 if (PIN_REQUIRED && !pin) askPin();
-
 </script>
 </body>
 </html>
