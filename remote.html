@@ -108,28 +108,38 @@ function render(card) {
   }
 }
 
+let chain = Promise.resolve(), pending = 0;
+// Actions run strictly in order; the screen updates first, Anki catches up behind it.
+function queue(fn) {
+  pending++;
+  chain = chain.then(fn).catch(e => setStatus(false, e.message)).finally(() => { pending--; if (!pending) poll(); });
+}
+
 async function poll() {
-  if (busy) return;
+  if (pending) return;
   try {
     const card = await call("guiCurrentCard");
+    if (pending) return;               // an action started meanwhile: its result is newer
     setStatus(true, "connected"); render(card);
   } catch (e) {
     setStatus(false, /AnkiConnect|fetch/i.test(e.message) ? "Anki not reachable" : e.message);
   }
 }
 
-async function act(fn) {
-  busy = true;
-  try { await fn(); } catch (e) { setStatus(false, e.message); }
-  busy = false; poll();
-}
+function buzz() { if (navigator.vibrate) navigator.vibrate(8); }
+function tap(el, fn) { el.addEventListener("pointerdown", e => { e.preventDefault(); fn(e); }); }
 
-$("show").onclick = () => act(async () => { await call("guiShowAnswer"); answerShown = true; if (navigator.vibrate) navigator.vibrate(10); });
-document.querySelectorAll(".rate").forEach(b => b.onclick = () => act(async () => {
-  await call("guiAnswerCard", { ease: +b.dataset.ease }); answerShown = false; cardId = null;
-  if (navigator.vibrate) navigator.vibrate(10);
+tap($("show"), () => {
+  answerShown = true; $("show").classList.add("hidden"); $("rate").classList.remove("hidden"); buzz();
+  queue(() => call("guiShowAnswer"));
+});
+document.querySelectorAll(".rate").forEach(b => tap(b, () => {
+  if (!answerShown) return;
+  answerShown = false; cardId = null; buzz();
+  $("rate").classList.add("hidden"); $("show").classList.remove("hidden");   // ready for next card now
+  queue(() => call("guiAnswerCard", { ease: +b.dataset.ease }));
 }));
-$("undo").onclick = () => act(async () => { await call("guiUndo"); answerShown = false; cardId = null; });
+tap($("undo"), () => { answerShown = false; cardId = null; queue(() => call("guiUndo")); });
 $("toggle").onclick = () => { showText = !showText; localStorage.setItem("showText", showText ? "1" : "0"); label(); poll(); };
 function label() { $("toggle").textContent = "Show card text: " + (showText ? "on" : "off"); }
 
@@ -138,13 +148,14 @@ $("pinDlg").addEventListener("close", () => { pin = $("pinIn").value; sessionSto
 
 // Volume / keyboard keys (when a Bluetooth keyboard is paired or on desktop testing)
 addEventListener("keydown", e => {
-  if (e.key === " " || e.key === "Enter") { e.preventDefault(); answerShown ? document.querySelector(".good").click() : $("show").click(); }
-  else if ("1234".includes(e.key) && answerShown) document.querySelector(`[data-ease="${e.key}"]`).click();
+  const fire = el => el.dispatchEvent(new Event("pointerdown", { cancelable: true }));
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); fire(answerShown ? document.querySelector(".good") : $("show")); }
+  else if ("1234".includes(e.key) && answerShown) fire(document.querySelector(`[data-ease="${e.key}"]`));
 });
 
 label();
 if (PIN_REQUIRED && !pin) askPin();
-poll(); setInterval(poll, 1500);
+poll(); setInterval(poll, 600);
 </script>
 </body>
 </html>

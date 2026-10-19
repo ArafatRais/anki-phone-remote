@@ -30,6 +30,8 @@ def lan_ip():
 
 def make_handler(pin):
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"  # keep-alive: no new connection per tap
+
         def log_message(self, *args):
             pass
 
@@ -50,13 +52,14 @@ def make_handler(pin):
                 self._send(404, "{}")
 
         def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)  # always drain the body so keep-alive stays in sync
             if self.path != "/api":
                 return self._send(404, "{}")
             if pin and self.headers.get("X-Pin") != pin:
                 return self._send(401, json.dumps({"error": "bad pin"}))
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                req = json.loads(self.rfile.read(length))
+                req = json.loads(body)
                 if req.get("action") not in ALLOWED:
                     return self._send(403, json.dumps({"error": "action not allowed"}))
                 req["version"] = 6
