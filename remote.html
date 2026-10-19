@@ -67,8 +67,8 @@ let pin = sessionStorage.getItem("pin") || "";
 let showText = localStorage.getItem("showText") === "1";
 let cardId = null, answerShown = false, busy = false;
 
-async function call(action, params) {
-  const r = await fetch("/api", { method: "POST",
+async function call(action, params, signal) {
+  const r = await fetch("/api", { method: "POST", signal,
     headers: { "Content-Type": "application/json", "X-Pin": pin },
     body: JSON.stringify({ action, params }) });
   if (r.status === 401) { askPin(); throw new Error("PIN required"); }
@@ -111,20 +111,32 @@ function render(card) {
 let chain = Promise.resolve(), pending = 0;
 // Actions run strictly in order; the screen updates first, Anki catches up behind it.
 function queue(fn) {
-  pending++;
+  pending++; if (pollCtl) pollCtl.abort();
   chain = chain.then(fn).catch(e => setStatus(false, e.message)).finally(() => { pending--; if (!pending) poll(); });
 }
 
+// One poll at a time, spaced by how slow the link is. Over a tunnel a fixed fast timer
+// piles up requests and starves the button presses, so back off and cancel polls for taps.
+let pollCtl = null, rtt = 100, polling = false;
 async function poll() {
-  if (pending) return;
+  if (pending || polling) return;
+  polling = true; pollCtl = new AbortController();
+  const t0 = performance.now();
   try {
-    const card = await call("guiCurrentCard");
-    if (pending) return;               // an action started meanwhile: its result is newer
-    setStatus(true, "connected"); render(card);
+    const card = await call("guiCurrentCard", undefined, pollCtl.signal);
+    rtt = performance.now() - t0;
+    if (!pending) { setStatus(true, "connected"); render(card); }
   } catch (e) {
-    setStatus(false, /AnkiConnect|fetch/i.test(e.message) ? "Anki not reachable" : e.message);
+    if (e.name !== "AbortError") setStatus(false, /AnkiConnect|fetch/i.test(e.message) ? "Anki not reachable" : e.message);
   }
+  polling = false;
 }
+(async function loop() {
+  for (;;) {
+    if (!document.hidden) await poll();
+    await new Promise(r => setTimeout(r, Math.max(600, rtt * 2)));
+  }
+})();
 
 function buzz() { if (navigator.vibrate) navigator.vibrate(8); }
 function tap(el, fn) { el.addEventListener("pointerdown", e => { e.preventDefault(); fn(e); }); }
@@ -155,7 +167,7 @@ addEventListener("keydown", e => {
 
 label();
 if (PIN_REQUIRED && !pin) askPin();
-poll(); setInterval(poll, 600);
+
 </script>
 </body>
 </html>
