@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#111418">
+<title>Anki Remote</title>
+<style>
+  :root { --bg:#111418; --fg:#eef1f5; --mut:#8b95a3; --card:#1b2027;
+          --again:#e5484d; --hard:#f08a24; --good:#30a46c; --easy:#3e63dd; --show:#3b4350; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f5f7; --fg:#15181d; --mut:#5d6672; --card:#fff; --show:#2b323c; }
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.4 -apple-system,system-ui,sans-serif; overscroll-behavior:none; }
+  body { display:flex; flex-direction:column; padding:env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 12px); gap:12px; }
+  header { display:flex; justify-content:space-between; align-items:center; padding-top:10px; color:var(--mut); font-size:14px; }
+  #status::before { content:""; display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--mut); margin-right:8px; }
+  #status.ok::before { background:var(--good); } #status.err::before { background:var(--again); }
+  #card { flex:1; min-height:0; overflow:auto; background:var(--card); border-radius:16px; padding:16px; font-size:18px; white-space:pre-wrap; }
+  #card.hidden { display:none; }
+  #msg { flex:1; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--mut); padding:0 24px; }
+  #msg.hidden { display:none; }
+  .row { display:grid; gap:10px; }
+  #rate { grid-template-columns:repeat(4,1fr); }
+  button { border:0; border-radius:16px; color:#fff; font-weight:600; font-size:17px; font-family:inherit; padding:0; touch-action:manipulation; }
+  button:active { transform:scale(.97); filter:brightness(.9); }
+  #show { height:30vh; min-height:120px; max-height:260px; background:var(--show); font-size:24px; }
+  .rate { height:22vh; min-height:96px; max-height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+  .rate small { font-weight:500; font-size:13px; opacity:.85; }
+  .again{background:var(--again)} .hard{background:var(--hard)} .good{background:var(--good)} .easy{background:var(--easy)}
+  .hidden { display:none !important; }
+  #tools { display:flex; justify-content:space-between; gap:10px; }
+  #tools button { background:transparent; color:var(--mut); font-size:14px; font-weight:500; padding:10px 6px; border-radius:10px; }
+  dialog { border:0; border-radius:16px; background:var(--card); color:var(--fg); padding:20px; }
+  dialog input { font-size:20px; padding:10px; width:100%; margin:12px 0; border-radius:10px; border:1px solid var(--mut); background:transparent; color:inherit; }
+  dialog button { background:var(--easy); width:100%; padding:14px; }
+</style>
+</head>
+<body>
+<header><span id="status">connecting…</span><span id="deck"></span></header>
+<div id="msg">Open Anki on your computer and start reviewing a deck.</div>
+<div id="card" class="hidden"></div>
+<div id="controls">
+  <div class="row"><button id="show">Show answer</button></div>
+  <div class="row hidden" id="rate">
+    <button class="rate again" data-ease="1">Again<small></small></button>
+    <button class="rate hard" data-ease="2">Hard<small></small></button>
+    <button class="rate good" data-ease="3">Good<small></small></button>
+    <button class="rate easy" data-ease="4">Easy<small></small></button>
+  </div>
+</div>
+<div id="tools">
+  <button id="undo">↶ Undo</button>
+  <button id="toggle">Show card text: off</button>
+</div>
+<dialog id="pinDlg"><form method="dialog">
+  <b>Enter PIN</b><input id="pinIn" type="password" inputmode="numeric" autocomplete="off">
+  <button>Unlock</button></form></dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const PIN_REQUIRED = __PIN_REQUIRED__;
+let pin = sessionStorage.getItem("pin") || "";
+let showText = localStorage.getItem("showText") === "1";
+let cardId = null, answerShown = false, busy = false;
+
+async function call(action, params) {
+  const r = await fetch("/api", { method: "POST",
+    headers: { "Content-Type": "application/json", "X-Pin": pin },
+    body: JSON.stringify({ action, params }) });
+  if (r.status === 401) { askPin(); throw new Error("PIN required"); }
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  return j.result;
+}
+
+function setStatus(ok, text) { const s = $("status"); s.className = ok ? "ok" : "err"; s.textContent = text; }
+
+function strip(html) {
+  const d = new DOMParser().parseFromString(html || "", "text/html");
+  d.querySelectorAll("style,script").forEach(n => n.remove());
+  return (d.body.innerText || d.body.textContent || "").trim();
+}
+
+function render(card) {
+  if (!card) {
+    cardId = null; answerShown = false;
+    $("msg").classList.remove("hidden"); $("card").classList.add("hidden");
+    $("show").classList.add("hidden"); $("rate").classList.add("hidden");
+    $("deck").textContent = "";
+    return;
+  }
+  if (card.cardId !== cardId) { cardId = card.cardId; answerShown = false; }
+  $("deck").textContent = card.deckName || "";
+  $("msg").classList.add("hidden");
+  $("show").classList.toggle("hidden", answerShown);
+  $("rate").classList.toggle("hidden", !answerShown);
+  const times = card.nextReviews || [];
+  document.querySelectorAll(".rate small").forEach((s, i) => s.textContent = times[i] || "");
+  const c = $("card");
+  c.classList.toggle("hidden", !showText);
+  if (showText) {
+    const q = strip(card.question), a = strip(card.answer);
+    c.textContent = answerShown && a.startsWith(q) ? a : (answerShown ? q + "\n\n— — —\n\n" + a : q);
+  }
+}
+
+async function poll() {
+  if (busy) return;
+  try {
+    const card = await call("guiCurrentCard");
+    setStatus(true, "connected"); render(card);
+  } catch (e) {
+    setStatus(false, /AnkiConnect|fetch/i.test(e.message) ? "Anki not reachable" : e.message);
+  }
+}
+
+async function act(fn) {
+  busy = true;
+  try { await fn(); } catch (e) { setStatus(false, e.message); }
+  busy = false; poll();
+}
+
+$("show").onclick = () => act(async () => { await call("guiShowAnswer"); answerShown = true; if (navigator.vibrate) navigator.vibrate(10); });
+document.querySelectorAll(".rate").forEach(b => b.onclick = () => act(async () => {
+  await call("guiAnswerCard", { ease: +b.dataset.ease }); answerShown = false; cardId = null;
+  if (navigator.vibrate) navigator.vibrate(10);
+}));
+$("undo").onclick = () => act(async () => { await call("guiUndo"); answerShown = false; cardId = null; });
+$("toggle").onclick = () => { showText = !showText; localStorage.setItem("showText", showText ? "1" : "0"); label(); poll(); };
+function label() { $("toggle").textContent = "Show card text: " + (showText ? "on" : "off"); }
+
+function askPin() { const d = $("pinDlg"); if (!d.open) d.showModal(); }
+$("pinDlg").addEventListener("close", () => { pin = $("pinIn").value; sessionStorage.setItem("pin", pin); poll(); });
+
+// Volume / keyboard keys (when a Bluetooth keyboard is paired or on desktop testing)
+addEventListener("keydown", e => {
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); answerShown ? document.querySelector(".good").click() : $("show").click(); }
+  else if ("1234".includes(e.key) && answerShown) document.querySelector(`[data-ease="${e.key}"]`).click();
+});
+
+label();
+if (PIN_REQUIRED && !pin) askPin();
+poll(); setInterval(poll, 1500);
+</script>
+</body>
+</html>
