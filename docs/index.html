@@ -32,16 +32,15 @@
   <h2>Set up (about 3 minutes)</h2>
   <div class="step"><b>1. Install AnkiConnect in Anki</b>
     Anki → Tools → Add-ons → Get Add-ons → paste code <code>2055492159</code> → restart Anki.</div>
-  <div class="step"><b>2. Get the server on your laptop</b>
-    Needs Python 3, which is already on a Mac.
-    <pre>git clone https://github.com/ArafatRais/anki-phone-remote.git
-cd anki-phone-remote
-python3 server.py</pre>
-    It prints an address like <code>http://192.168.1.23:8080</code>. Add <code>--pin 1234</code> to require a PIN.</div>
-  <div class="step"><b>3. Open it on your phone</b>
-    Join the same Wi-Fi as the laptop, then open the printed address, or enter the laptop's IP here:
-    <form id="f"><input id="ip" placeholder="192.168.1.23" inputmode="decimal" autocomplete="off"><button>Open remote</button></form>
-    <p class="note" style="margin:8px 0 0">Tip: in Safari use Share → Add to Home Screen, in Chrome use ⋮ → Add to Home screen, for a full-screen app.</p></div>
+  <div class="step"><b>2. Run one line on your laptop</b>
+    Paste into Terminal (Python 3 is already on a Mac):
+    <pre>curl -sL https://raw.githubusercontent.com/ArafatRais/anki-phone-remote/main/server.py | python3 -</pre>
+    A page opens on your laptop with a QR code. Add <code>-- --pin 1234</code> at the end to require a PIN.
+    <p class="note" style="margin:8px 0 0">Prefer double-clicking? <a href="https://github.com/ArafatRais/anki-phone-remote/archive/refs/heads/main.zip">Download the zip</a>, unzip, and double-click <b>Start Anki Remote.command</b> (first time: right-click → Open).</p></div>
+  <div class="step"><b>3. Scan the QR code with your phone camera</b>
+    Same Wi-Fi as the laptop. Tip: Share → Add to Home Screen for a full-screen app.
+    <p class="note" style="margin:8px 0 0">No camera handy? Enter the laptop's IP instead:</p>
+    <form id="f"><input id="ip" placeholder="192.168.1.23" inputmode="decimal" autocomplete="off"><button>Open remote</button></form></div>
   <div class="step"><b>4. Start a review in Anki</b>
     Open any deck so the review screen is showing. The phone follows along.</div>
 

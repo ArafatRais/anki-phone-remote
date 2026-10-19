@@ -8,13 +8,37 @@ No third-party packages needed.
 import argparse
 import json
 import socket
+import subprocess
 import urllib.request
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ANKI_CONNECT = "http://127.0.0.1:8765"
 ALLOWED = {"guiCurrentCard", "guiShowAnswer", "guiAnswerCard", "guiUndo", "guiDeckReview", "deckNames"}
-PAGE = Path(__file__).with_name("remote.html")
+RAW = "https://raw.githubusercontent.com/ArafatRais/anki-phone-remote/main/remote.html"
+HERE = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+
+
+def load_page():
+    """remote.html next to this file, else download it (lets server.py run on its own / piped)."""
+    f = HERE / "remote.html"
+    if f.exists():
+        return f.read_text()
+    try:
+        with urllib.request.urlopen(RAW, timeout=10) as r:
+            return r.read().decode()
+    except Exception:  # python.org builds on macOS often lack SSL certs; curl ships with macOS
+        return subprocess.run(["curl", "-fsSL", RAW], capture_output=True, text=True, check=True).stdout
+
+
+QR_PAGE = """<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Anki Remote</title>
+<body style="font:18px -apple-system,system-ui,sans-serif;text-align:center;padding:40px;background:#f4f5f7;color:#15181d">
+<h2>Scan with your phone camera</h2><div id="q" style="display:inline-block;padding:16px;background:#fff;border-radius:16px"></div>
+<p>or type <b id="u"></b> (same Wi-Fi)</p><p style="color:#5d6672">Keep Anki open on a deck. You can close this tab.</p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>const u=location.search.slice(1);document.getElementById("u").textContent=u;
+try{new QRCode(document.getElementById("q"),{text:u,width:240,height:240})}catch(e){document.getElementById("q").remove()}</script>"""
 
 
 def lan_ip():
@@ -28,7 +52,7 @@ def lan_ip():
         s.close()
 
 
-def make_handler(pin):
+def make_handler(pin, page):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"  # keep-alive: no new connection per tap
 
@@ -46,8 +70,10 @@ def make_handler(pin):
 
         def do_GET(self):
             if self.path.split("?")[0] in ("/", "/index.html"):
-                html = PAGE.read_text().replace("__PIN_REQUIRED__", "true" if pin else "false")
+                html = page.replace("__PIN_REQUIRED__", "true" if pin else "false")
                 self._send(200, html, "text/html; charset=utf-8")
+            elif self.path.split("?")[0] == "/qr":
+                self._send(200, QR_PAGE, "text/html; charset=utf-8")
             else:
                 self._send(404, "{}")
 
@@ -79,8 +105,14 @@ def main():
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--pin", default="", help="optional PIN the phone must enter")
     args = ap.parse_args()
-    srv = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(args.pin))
-    print(f"\nAnki remote running. On your phone (same Wi-Fi) open:\n\n  http://{lan_ip()}:{args.port}\n")
+    page = load_page()
+    try:
+        srv = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(args.pin, page))
+    except OSError:
+        raise SystemExit(f"Port {args.port} is busy (is the remote already running?). Try --port {args.port + 1}.")
+    url = f"http://{lan_ip()}:{args.port}"
+    print(f"\nAnki remote running. On your phone (same Wi-Fi) open:\n\n  {url}\n")
+    webbrowser.open(f"http://127.0.0.1:{args.port}/qr?{url}")
     print("Keep Anki open, with AnkiConnect installed. Ctrl+C to stop.")
     try:
         srv.serve_forever()
