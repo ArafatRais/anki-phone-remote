@@ -52,6 +52,7 @@
     <button class="rate easy" data-ease="4">Easy<small></small></button>
   </div>
 </div>
+<div id="diag" style="color:var(--mut);font-size:12px;text-align:center;min-height:1.2em"></div>
 <div id="tools">
   <button id="undo">↶ Undo</button>
   <button id="toggle">Show card text: off</button>
@@ -73,6 +74,7 @@ async function call(action, params, signal) {
     body: JSON.stringify({ action, params }) });
   if (r.status === 401) { askPin(); throw new Error("PIN required"); }
   const j = await r.json();
+  lastAnkiMs = j.anki_ms;
   if (j.error) throw new Error(j.error);
   return j.result;
 }
@@ -108,11 +110,17 @@ function render(card) {
   }
 }
 
-let chain = Promise.resolve(), pending = 0;
+let chain = Promise.resolve(), pending = 0, lastAnkiMs = "?";
 // Actions run strictly in order; the screen updates first, Anki catches up behind it.
-function queue(fn) {
+function queue(label, fn) {
+  const tap = performance.now();
   pending++; if (pollCtl) pollCtl.abort();
-  chain = chain.then(fn).catch(e => setStatus(false, e.message)).finally(() => { pending--; if (!pending) poll(); });
+  chain = chain.then(async () => {
+    const start = performance.now();
+    await fn();
+    const end = performance.now();
+    $("diag").textContent = `${label}: waited ${Math.round(start - tap)}ms, round trip ${Math.round(end - start)}ms, Anki ${lastAnkiMs}ms`;
+  }).catch(e => setStatus(false, e.message)).finally(() => { pending--; if (!pending) poll(); });
 }
 
 // One poll at a time, spaced by how slow the link is. Over a tunnel a fixed fast timer
@@ -143,15 +151,15 @@ function tap(el, fn) { el.addEventListener("pointerdown", e => { e.preventDefaul
 
 tap($("show"), () => {
   answerShown = true; $("show").classList.add("hidden"); $("rate").classList.remove("hidden"); buzz();
-  queue(() => call("guiShowAnswer"));
+  queue("show", () => call("guiShowAnswer"));
 });
 document.querySelectorAll(".rate").forEach(b => tap(b, () => {
   if (!answerShown) return;
   answerShown = false; cardId = null; buzz();
   $("rate").classList.add("hidden"); $("show").classList.remove("hidden");   // ready for next card now
-  queue(() => call("guiAnswerCard", { ease: +b.dataset.ease }));
+  queue("rate", () => call("guiAnswerCard", { ease: +b.dataset.ease }));
 }));
-tap($("undo"), () => { answerShown = false; cardId = null; queue(() => call("guiUndo")); });
+tap($("undo"), () => { answerShown = false; cardId = null; queue("undo", () => call("guiUndo")); });
 $("toggle").onclick = () => { showText = !showText; localStorage.setItem("showText", showText ? "1" : "0"); label(); poll(); };
 function label() { $("toggle").textContent = "Show card text: " + (showText ? "on" : "off"); }
 

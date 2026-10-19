@@ -92,8 +92,11 @@ def make_handler(pin, page):
                 r = urllib.request.Request(
                     ANKI_CONNECT, json.dumps(req).encode(), {"Content-Type": "application/json"}
                 )
-                with urllib.request.urlopen(r, timeout=5) as resp:
-                    self._send(200, resp.read())
+                t0 = time.perf_counter()
+                with urllib.request.urlopen(r, timeout=30) as resp:
+                    out = json.loads(resp.read())
+                out["anki_ms"] = round((time.perf_counter() - t0) * 1000)  # time Anki itself took
+                self._send(200, json.dumps(out))
             except Exception as e:  # Anki closed, AnkiConnect missing, bad JSON...
                 self._send(502, json.dumps({"error": f"cannot reach AnkiConnect: {e}"}))
 
