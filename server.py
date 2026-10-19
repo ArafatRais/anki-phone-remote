@@ -9,6 +9,7 @@ import argparse
 import json
 import socket
 import subprocess
+import time
 import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,10 +27,10 @@ def load_page():
     if f.exists():
         return f.read_text()
     try:
-        with urllib.request.urlopen(RAW, timeout=10) as r:
+        with urllib.request.urlopen(f"{RAW}?t={int(time.time())}", timeout=10) as r:  # ?t= dodges the raw cache
             return r.read().decode()
     except Exception:  # python.org builds on macOS often lack SSL certs; curl ships with macOS
-        return subprocess.run(["curl", "-fsSL", RAW], capture_output=True, text=True, check=True).stdout
+        return subprocess.run(["curl", "-fsSL", f"{RAW}?t={int(time.time())}"], capture_output=True, text=True, check=True).stdout
 
 
 QR_PAGE = """<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Anki Remote</title>
@@ -39,6 +40,19 @@ QR_PAGE = """<!doctype html><meta name="viewport" content="width=device-width,in
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>const u=location.search.slice(1);document.getElementById("u").textContent=u;
 try{new QRCode(document.getElementById("q"),{text:u,width:240,height:240})}catch(e){document.getElementById("q").remove()}</script>"""
+
+
+STYLE_RE = re.compile(r"<(style|script)\b.*?</\1>", re.S | re.I)
+
+
+def slim_card(card):
+    """Cards can carry 100KB+ of CSS/field data; the phone only needs a little."""
+    if not isinstance(card, dict):
+        return card
+    keep = {k: card.get(k) for k in ("cardId", "deckName", "buttons", "nextReviews")}
+    for k in ("question", "answer"):
+        keep[k] = STYLE_RE.sub("", card.get(k) or "")[:6000]
+    return keep
 
 
 def lan_ip():
@@ -95,6 +109,8 @@ def make_handler(pin, page):
                 t0 = time.perf_counter()
                 with urllib.request.urlopen(r, timeout=30) as resp:
                     out = json.loads(resp.read())
+                if req.get("action") == "guiCurrentCard":
+                    out["result"] = slim_card(out.get("result"))
                 out["anki_ms"] = round((time.perf_counter() - t0) * 1000)  # time Anki itself took
                 self._send(200, json.dumps(out))
             except Exception as e:  # Anki closed, AnkiConnect missing, bad JSON...
