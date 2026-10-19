@@ -8,7 +8,6 @@ No third-party packages needed.
 import argparse
 import json
 import re
-import socket
 import subprocess
 import time
 import urllib.request
@@ -56,15 +55,27 @@ def slim_card(card):
     return keep
 
 
-def lan_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def candidate_ips():
+    """Real addresses this machine can be reached on, best first.
+    Tailscale (100.64/10) wins: it works on any Wi-Fi. Then ordinary private LAN ranges.
+    Skips loopback, link-local and 192.0.0.x (a virtual interface, not Wi-Fi)."""
     try:
-        s.connect(("10.255.255.255", 1))
-        return s.getsockname()[0]
+        out = subprocess.run(["ifconfig"], capture_output=True, text=True).stdout
     except OSError:
-        return "127.0.0.1"
-    finally:
-        s.close()
+        out = ""
+    found = []
+    for ip in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", out):
+        a, b = map(int, ip.split(".")[:2])
+        if a == 127 or (a, b) == (169, 254) or ip.startswith("192.0.0."):
+            continue
+        if a == 100 and 64 <= b <= 127:
+            rank = 0
+        elif a == 10 or (a, b) == (192, 168) or (a == 172 and 16 <= b <= 31):
+            rank = 1
+        else:
+            continue
+        found.append((rank, ip))
+    return [ip for _, ip in sorted(found)] or ["127.0.0.1"]
 
 
 def make_handler(pin, page):
@@ -130,8 +141,11 @@ def main():
         srv = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(args.pin, page))
     except OSError:
         raise SystemExit(f"Port {args.port} is busy (is the remote already running?). Try --port {args.port + 1}.")
-    url = f"http://{lan_ip()}:{args.port}"
-    print(f"\nAnki remote running. On your phone (same Wi-Fi) open:\n\n  {url}\n")
+    ips = candidate_ips()
+    url = f"http://{ips[0]}:{args.port}"
+    if len(ips) > 1:
+        print("Other addresses to try: " + ", ".join(f"http://{i}:{args.port}" for i in ips[1:]))
+    print(f"\nAnki remote running. On your phone open (Tailscale address if listed, otherwise same Wi-Fi):\n\n  {url}\n")
     webbrowser.open(f"http://127.0.0.1:{args.port}/qr?{url}")
     print("Keep Anki open, with AnkiConnect installed. Ctrl+C to stop.")
     try:
