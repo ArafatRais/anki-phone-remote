@@ -7,6 +7,7 @@ No third-party packages needed.
 """
 import argparse
 import json
+import re
 import socket
 import subprocess
 import time
