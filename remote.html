@@ -110,6 +110,8 @@ function render(card) {
   }
 }
 
+// A public tunnel (a hostname, not an IP) rate-limits busy clients, so ask far less often there.
+const TUNNEL = /[a-z]/i.test(location.hostname) && location.hostname !== "localhost";
 let chain = Promise.resolve(), pending = 0, lastAnkiMs = "?";
 // Actions run strictly in order; the screen updates first, Anki catches up behind it.
 function queue(label, fn) {
@@ -120,7 +122,7 @@ function queue(label, fn) {
     await fn();
     const end = performance.now();
     $("diag").textContent = `${label}: waited ${Math.round(start - tap)}ms, round trip ${Math.round(end - start)}ms, Anki ${lastAnkiMs}ms`;
-  }).catch(e => setStatus(false, e.message)).finally(() => { pending--; if (!pending) poll(); });
+  }).catch(e => setStatus(false, e.message)).finally(() => { pending--; if (!pending && !TUNNEL) poll(); });
 }
 
 // One poll at a time, spaced by how slow the link is. Over a tunnel a fixed fast timer
@@ -142,7 +144,7 @@ async function poll() {
 (async function loop() {
   for (;;) {
     if (!document.hidden) await poll();
-    await new Promise(r => setTimeout(r, Math.max(600, rtt * 2)));
+    await new Promise(r => setTimeout(r, TUNNEL ? 5000 : Math.max(600, rtt * 2)));
   }
 })();
 
